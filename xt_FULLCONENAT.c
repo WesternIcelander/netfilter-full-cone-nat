@@ -336,7 +336,7 @@ static void gc_worker(struct work_struct *work) {
 static int ct_event_cb(struct notifier_block *this, unsigned long events, void *ptr) {
   struct nf_ct_event *item = ptr;
 #else
-static int ct_event_cb(unsigned int events, struct nf_ct_event *item) {
+static int ct_event_cb(unsigned int events, const struct nf_ct_event *item) {
 #endif
   struct nf_conn *ct;
   struct nf_conntrack_tuple *ct_tuple_reply, *ct_tuple_original;
@@ -424,7 +424,7 @@ static uint16_t find_appropriate_port(struct net *net, const struct nf_conntrack
     /* for now we do the same thing for both --random and --random-fully */
 
     /* select a random starting point */
-    start = (uint16_t)(prandom_u32() % (u32)range_size);
+    start = (uint16_t)(get_random_u32() % (u32)range_size);
   } else {
 
     if ((original_port >= min && original_port <= min + range_size - 1)
@@ -645,16 +645,13 @@ static int fullconenat_tg_check(const struct xt_tgchk_param *par)
 #ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
     ct_event_notifier.notifier_call = ct_event_cb;
 #else
-    ct_event_notifier.fcn = ct_event_cb;
+    ct_event_notifier.ct_event = ct_event_cb;
 #endif
 
-    if (nf_conntrack_register_notifier(par->net, &ct_event_notifier) == 0) {
-      ct_event_notifier_registered = 1;
-      pr_debug("xt_FULLCONENAT: fullconenat_tg_check(): ct_event_notifier registered\n");
-    } else {
-      printk("xt_FULLCONENAT: warning: failed to register a conntrack notifier. Disable active GC for mappings.\n");
-    }
-
+    nf_conntrack_register_notifier(par->net, &ct_event_notifier);
+        ct_event_notifier_registered = 1;
+    pr_debug("xt_FULLCONENAT: fullconenat_tg_check(): ct_event_notifier "
+             "registered\n");
   }
 
   mutex_unlock(&nf_ct_net_event_lock);
@@ -672,7 +669,7 @@ static void fullconenat_tg_destroy(const struct xt_tgdtor_param *par)
 
   if (tg_refer_count == 0) {
     if (ct_event_notifier_registered) {
-      nf_conntrack_unregister_notifier(par->net, &ct_event_notifier);
+      nf_conntrack_unregister_notifier(par->net);
       ct_event_notifier_registered = 0;
 
       pr_debug("xt_FULLCONENAT: fullconenat_tg_destroy(): ct_event_notifier unregistered\n");
